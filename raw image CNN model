@@ -242,5 +242,5 @@ plt.figure(figsize=(12,20))
 plt.show()
 # save the accuracies figure
 plt.tight_layout()
-plt.savefig(f"{folder}/accuraries_raw_image.png")
+fig.savefig(f"{folder}/accuraries_raw_image.png")
 plt.close()

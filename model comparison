@@ -96,5 +96,5 @@ for i in range(2):
     ax[i].set_ylabel(f'{results.columns[i+1]} level')
     ax[i].bar(results.loc[:,0], results.loc[:,f'{results.columns[i+1]}'])
 plt.show()
-plt.savefig(f"{folder}plots and displays/models_performance_barchart.png")
+fig.savefig(f"{folder}plots and displays/models_performance_barchart.png")
 plt.close()
