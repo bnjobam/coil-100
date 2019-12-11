@@ -1,0 +1,53 @@
+from sklearn.decomposition import PCA
+import xgboost as xgb
+from sklearn.pipeline import make_pipeline
+import pandas as pd
+import numpy as np
+import tensorflow as tf
+import time
+import matplotlib.pyplot as plt
+import os
+import shutil
+from PIL import Image
+import pickle
+
+pca = PCA(n_components=650, whiten=False, random_state=42)
+xgbregress=xgb.XGBRegressor(random_state=1, learning_rate=0.1, n_jobs=-1)
+
+
+folder='C:/Users/My PC/Documents/GitHub/coil100'
+trainX=pd.read_csv(folder+'/mobile_trainX.csv')
+validX=pd.read_csv(folder+'/mobile_validX.csv')
+trainy=pd.read_csv(folder+'/train_label.csv')
+validy=pd.read_csv(folder+'/valid_label.csv')
+tangle=pd.read_csv(folder+'/train_angle.csv')
+vangle=pd.read_csv(folder+'/valid_angle.csv')
+
+#training the model using pretrained from Mobilenet
+trainx1=np.array([trainX[i].reshape(28*28*64) for i in range(len(trainX))])
+validx1=np.array([validX[i].reshape(28*28*64) for i in range(len(validX))])
+# trainX=trainX.reshape((len(trainX),28*28*64))
+# validX=validX.reshape((len(validX),28*28*64))
+
+
+model=make_pipeline(pca,xgbregress)
+predmod=model.fit(trainx1,tangle/355)
+
+# predict_valid_angle=predmod.predict(validX)
+
+regresser=open(folder+'/models/xgb_regression_transfer_learn.py', 'wb')
+pickle.dump(predmod,regresser)
+regresser.close()
+
+
+#Classification
+pca = PCA(n_components=250, whiten=True, random_state=42)
+xgbtree=xgb.XGBClassifier(random_state=1, learning_rate=0.01, n_jobs=-1)
+cmodel=make_pipeline(pca,xgbtree)
+
+cpredmodel=cmodel.fit(trainx1,trainy)
+
+# predict_valid_accuracy=cpredmodel.score(validx1,validy)
+classifier=open(folder+'/models/xgb_classification_transfer_learn.py', 'wb')
+pickle.dump(cpredmodel,classifier)
+classifier.close()

@@ -1,0 +1,228 @@
+import numpy as np
+import pandas as pd
+from PIL import Image
+import cv2
+from keras.layers import Dense,GlobalAveragePooling2D
+from keras.applications import MobileNet, resnet50
+from keras.preprocessing import image
+from keras.applications.mobilenet import preprocess_input
+from keras.preprocessing.image import ImageDataGenerator
+from sklearn.preprocessing import LabelBinarizer
+from keras.applications.mobilenet import decode_predictions
+from keras.models import Model
+from keras.layers import Input
+from keras.layers.core import Lambda
+from keras.layers.normalization import BatchNormalization
+from keras.layers.convolutional import Conv2D
+from keras.layers.convolutional import MaxPooling2D
+from keras.layers.core import Activation
+from keras.layers.core import Dropout
+from keras.layers.core import Dense
+from keras.layers import Flatten
+from keras.optimizers import Adam
+
+
+def read_data(path):
+    data=[]
+    id_cat=[]
+    angle=[]
+    for imagePath in os.listdir(path):
+        # load the image, pre-process it, and store it in the data list
+        image = Image.open(path+'/'+imagePath)
+        image = image.resize((IMAGE_DIMS[1], IMAGE_DIMS[0]))
+        #image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image = np.asarray(image)
+        data.append(image)
+
+        # update the respective lists
+        id_cat.append(imagePath.split('__')[0])
+        angle.append(float(imagePath.split('__')[1].split('.')[0]))
+    return data, id_cat, angle
+
+def test_accuracy(model,testdata,testY, ttangle):
+    preds=model.predict(testdata, batch_size=32)
+    object_id=np.array([trainYLB.classes_[x.argmax()] for x in preds[0]])
+    angles=np.array([x*355 for x in preds[1].flatten()])
+    acc=sum([object_id[i]==testY[i] for i in range(len(testY))])/len(testY)
+    mse=sum([((angles[i]-ttangle[i])**2)/len(testY) for i in range(len(testY))])
+    return acc, mse
+
+class id_angle:
+    def id_branch(inputs, numCategories,
+        finalAct="softmax", chanDim=-1):
+        # utilize a lambda layer to convert the 3 channel input to a
+        # grayscale representation
+        Lambda(lambda c: tf.image.rgb_to_grayscale(c))(inputs)
+
+        # CONV => RELU => POOL
+        x = Conv2D(32, (3, 3), padding="same")(x)
+        x = Activation("relu")(x)
+        x = BatchNormalization(axis=chanDim)(x)
+        x = MaxPooling2D(pool_size=(3, 3))(x)
+        x = Dropout(0.25)(x)
+        # (CONV => RELU) * 2 => POOL
+        x = Conv2D(64, (3, 3), padding="same")(x)
+        x = Activation("relu")(x)
+        x = BatchNormalization(axis=chanDim)(x)
+        x = Conv2D(64, (3, 3), padding="same")(x)
+        x = Activation("relu")(x)
+        x = BatchNormalization(axis=chanDim)(x)
+        x = MaxPooling2D(pool_size=(2, 2))(x)
+        x = Dropout(0.25)(x)
+
+        # (CONV => RELU) * 2 => POOL
+        x = Conv2D(128, (3, 3), padding="same")(x)
+        x = Activation("relu")(x)
+        x = BatchNormalization(axis=chanDim)(x)
+        x = Conv2D(128, (3, 3), padding="same")(x)
+        x = Activation("relu")(x)
+        x = BatchNormalization(axis=chanDim)(x)
+        x = MaxPooling2D(pool_size=(2, 2))(x)
+        x = Dropout(0.25)(x)
+
+        x = Flatten()(x)
+        x = Dense(256)(x)
+        x = Activation("relu")(x)
+        x = BatchNormalization()(x)
+        x = Dropout(0.5)(x)
+        x = Dense(numCategories)(x)
+        x = Activation(finalAct, name="id_output")(x)
+
+        # return the category prediction sub-network
+        return x
+
+    def angle_branch(inputs, finalAct="linear",
+        chanDim=-1):
+        # CONV => RELU => POOL
+        x = Conv2D(16, (3, 3), padding="same")(inputs)
+        x = Activation("tanh")(x)
+        x = BatchNormalization(axis=chanDim)(x)
+        x = MaxPooling2D(pool_size=(3, 3))(x)
+        x = Dropout(0.25)(x)
+
+        # CONV => RELU => POOL
+        x = Conv2D(32, (3, 3), padding="same")(x)
+        x = Activation("relu")(x)
+        x = BatchNormalization(axis=chanDim)(x)
+        x = MaxPooling2D(pool_size=(2, 2))(x)
+        x = Dropout(0.025)(x)
+        x = Dense(72)(x)
+        # CONV => RELU => POOL
+        x = Conv2D(64, (3, 3), padding="same")(x)
+        x = Activation("relu")(x)
+        x = BatchNormalization(axis=chanDim)(x)
+        x = MaxPooling2D(pool_size=(2, 2))(x)
+        x = Dropout(0.25)(x)
+
+        x = Dense(40)(x)
+        #CONV => RELU => POOL
+        x = Conv2D(32, (3, 3), padding="same")(x)
+        x = Activation("relu")(x)
+        x = BatchNormalization(axis=chanDim)(x)
+        x = MaxPooling2D(pool_size=(2, 2))(x)
+        x = Dropout(0.5)(x)
+
+        x = Flatten()(x)
+        x = Dense(20)(x)
+        x = Activation("selu")(x)
+        x = BatchNormalization()(x)
+        x = Dropout(0.5)(x)
+        x = Dense(1)(x)
+        x = Activation(finalAct, name="angle_output")(x)
+
+        # return the angle prediction sub-network
+        return x
+    #     @staticmethod
+    def build(width, height, numCategories,
+        finalAct1="softmax", finalAct2='linear'):
+        # initialize the input shape and channel dimension (this code
+        # assumes you are using TensorFlow which utilizes channels
+        # last ordering)
+        inputShape = (height, width,64)
+        chanDim = -1
+
+        # construct both the "object id" and "angle" sub-networks
+        inputs = Input(shape=inputShape)
+        idBranch = id_angle.id_branch(inputs,
+            numCategories, finalAct=finalAct1, chanDim=chanDim)
+        angleBranch = id_angle.angle_branch(inputs,
+            finalAct=finalAct2, chanDim=chanDim)
+
+        # create the model using our input (the batch of images) and
+        # two separate outputs -- one for the id category
+        # branch and another for the angle branch, respectively
+        model = Model(
+            inputs=inputs,
+            outputs=[idBranch, angleBranch],
+            name="idangle")
+
+        # return the constructed network architecture
+        return model
+
+folder='C:/Users/My PC/Documents/GitHub/coil100'
+trainX=pd.read_csv(folder+'/mobile_trainX.csv')
+validX=pd.read_csv(folder+'/mobile_validX.csv')
+trainy=pd.read_csv(folder+'/train_label.csv')
+validy=pd.read_csv(folder+'/valid_label.csv')
+tangle=pd.read_csv(folder+'/train_angle.csv')
+vangle=pd.read_csv(folder+'/valid_angle.csv')
+
+trainX=trainX.reshape((len(trainX),28,28,64))
+validX=validX.reshape((len(validX),28,28,64))
+
+# convert the label lists to NumPy arrays prior to binarization
+trainY = np.array(trainy)
+validY = np.array(validy)
+
+# binarize both sets of labels
+trainYLB = LabelBinarizer()
+validYLB = LabelBinarizer()
+trainY = trainYLB.fit_transform(trainY)
+validY = validYLB.fit_transform(validY)
+
+# initialize the number of epochs to train for, initial learning rate,
+# batch size, and image dimensions
+EPOCHS = 20
+INIT_LR = 1e-3
+BS = 32
+batch_size=BS
+IMAGE_DIMS = (224, 224, 3)
+
+os.mkdirs('models')
+# train the network to perform multi-output classification
+H = model.fit(trainX,
+	{"id_output": trainY, "angle_output": tangle/355},
+	validation_data=(validX,
+		{"id_output": validY, "angle_output": vangle/355}),
+	epochs=EPOCHS, batch_size=BS,
+	verbose=1)
+
+#the angle is divided by 355 as a scaling factor
+# save the model to disk
+print("[INFO] serializing network...")
+model.save(f"{folder}/models/transfer_learn_mobilenet_model.py")
+
+os.mkdirs('plots and displays')
+
+# create a new figure for the accuracies
+accuracyNames = ["id_output_acc", "angle_output_acc"]
+plt.style.use("ggplot")
+(fig, ax) = plt.subplots(2, 1, figsize=(8, 8))
+titles=['Accuracy', 'Mean Square Error']
+# loop over the accuracy names
+for (i, l) in enumerate(accuracyNames):
+    # plot the loss for both the training and validation data
+    ax[i].set_title(f"{titles[i]} for {l}")
+    ax[i].set_xlabel("Epoch #")
+    ax[i].set_ylabel(titles[i])
+    ax[i].plot(np.arange(0, EPOCHS), H.history[l], label='train_'+l)
+    ax[i].plot(np.arange(0, EPOCHS), H.history["val_" + l],
+        label="val_" + l)
+    ax[i].legend()
+
+plt.figure(figsize=(12,20))
+plt.show()
+# save the accuracies figure
+plt.tight_layout()
+plt.savefig(f"{folder}/plots and displays/accuracies.png")
+plt.close()

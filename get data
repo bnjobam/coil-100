@@ -1,0 +1,17 @@
+# Computer vision to detect object and angle of rotation with data gotten from
+#https://www.kaggle.com/jessicali9530/coil100
+
+import pandas as pd
+import numpy as np
+import os
+import shutil
+import urllib2
+
+
+folder='C:/Users/My PC/Documents/GitHub/coil100'
+os.chdir(folder)
+##if you have access to Kaggle and have agreed to the data conditions
+#response = urllib2.urlopen('https://www.kaggle.com/jessicali9530/coil100')
+#html = response.read()
+
+shutil.unpack_archive(folder+'/coil100.zip')

@@ -1,0 +1,64 @@
+import pandas as pd
+import numpy as np
+import tensorflow as tf
+import time
+import matplotlib.pyplot as plt
+import os
+import shutil
+from PIL import Image
+from keras.models import load_model
+import pickle
+from keras.applications import MobileNet
+
+folder='C:/Users/My PC/Documents/GitHub/coil100/'
+
+def read_data(path, IMAGE_DIMS=[224,224]):
+    if os.path.isdir(path):
+        data=[]
+        for imagePath in os.listdir(path):
+            # load the image, pre-process it, and store it in the data list
+            image = Image.open(path+'/'+imagePath)
+            image = image.resize((IMAGE_DIMS[1], IMAGE_DIMS[0]))
+            #image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            image = np.asarray(image)
+            data.append(image)
+        return data
+    else:
+        image = Image.open(path)
+        image = image.resize((IMAGE_DIMS[1], IMAGE_DIMS[0]))
+        #image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image = np.asarray(image)
+        return [image]
+
+def graycells(image):
+    n,m =image.shape[0],image.shape[1]
+    im=np.zeros((n,m))
+    for i in range(n):
+        for j in range(m):
+            im[i][j]=image[i][j].mean()
+    return im
+
+
+raw_CNN_model=load_model(folder+'models/raw_image_CNN_model.py', custom_objects={'tf':tf})
+regressor=open(folder+'models/xgb_regression.py', 'rb')
+xgb_regressor=pickle.load(regressor)
+classifier.close()
+
+class final_model:
+
+    def predict(data):
+        obj=[f'obj{i}' for i in range(1,101)]
+        in_data=np.array(read_data(data,[96,96]))
+        if len(in_data)==1:
+            dat=in_data.reshape((1,96,96,3))
+            pred=raw_CNN_model.predict(dat)
+        else:
+            pred=raw_CNN_model.predict(in_data, batch_size=25)
+        gray_data=np.array([graycells(x) for x in in_data])
+        row_data=np.array([x.reshape(np.prod(x.shape)) for x in gray_data])
+        return [obj[x.argmax()] for x in pred[0]], xgb_regressor.predict(row_data)*355
+
+
+classifier=open(folder+'models/final_model.py', 'wb')
+pickle.dump(final_model,classifier)
+classifier.close()

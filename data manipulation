@@ -1,0 +1,147 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+import shutil
+from PIL import Image
+import cv2
+import random
+from keras.applications import MobileNet, resnet50
+
+mobilenet = MobileNet(weights='imagenet',
+                  include_top=False,
+                  input_shape=(224, 224, 3))
+
+
+#Data collection creation
+folder='C:/Users/My PC/Documents/GitHub/coil100/coil-100/coil-100'
+def get_data(folder, name,train_ind,valid_ind, test_ind):
+    for file in os.listdir(folder):
+        if file==name:
+            t='train'
+            v='valid'
+            tt='test'
+            if t not in os.listdir(folder):
+                os.mkdir(folder+'/'+t)
+            if v not in os.listdir(folder):
+                os.mkdir(folder+'/'+v)
+            if tt not in os.listdir(folder):
+                os.mkdir(folder+'/'+tt)
+            for pic in os.listdir(folder+'/'+name):
+                if int(pic.split('__')[1].split('.')[0]) in train_ind and pic[:3]=='obj':
+                    if pic not in os.listdir(folder+'/'+t):
+                        shutil.copy(folder+'/'+file+'/'+pic,folder+'/'+t)
+                        tangle.append(int(pic.split('__')[1].split('.')[0]))
+                if int(pic.split('__')[1].split('.')[0]) in valid_ind and pic[:3]=='obj':
+                    if pic not in os.listdir(folder+'/'+v):
+                        shutil.copy(folder+'/'+file+'/'+pic,folder+'/'+v)
+                        vangle.append(int(pic.split('__')[1].split('.')[0]))
+                if int(pic.split('__')[1].split('.')[0]) in test_ind and pic[:3]=='obj':
+                    if pic not in os.listdir(folder+'/'+tt):
+                        shutil.copy(folder+'/'+file+'/'+pic,folder+'/'+tt)
+                        ttangle.append(int(pic.split('__')[1].split('.')[0]))
+
+    return
+
+
+def group_data(folder):
+    for obj in os.listdir(folder):
+      if obj[-3:]=='png':
+          if obj.split('_')[0] not in os.listdir(folder):
+              os.mkdir(folder+'/'+obj.split('_')[0])
+              shutil.move(folder+'/'+obj,folder+'/'+obj.split('_')[0])
+          else:
+              shutil.move(folder+'/'+obj,folder+'/'+obj.split('_')[0])
+      else:
+          os.remove(folder+'/'+obj)
+    return
+
+def modify_pic(folder):
+    for file in os.listdir(folder):
+        first=folder+f'/{file}/{file}__0.png'
+        pic1=np.asarray(Image.open(first))
+        area=(0,0,pic1.shape[0],pic1.shape[1])
+
+        for fil in os.listdir(folder+'/'+file):
+            pict=np.round((np.asarray(Image.open(folder+'/'+file+'/'+fil).crop(area))*3+pic1)/4,0)
+            pict=pict.astype(np.uint8)
+            pict=Image.fromarray(pict)
+            pict.save(folder+'/'+file+'/'+fil)
+    return
+
+
+#we group the data for our prepocessing which is done by adding each
+#picture to the base picture (angle zero) in the ratio 3:1 using modify_pic
+group_data(folder)
+modify_pic(folder)
+tangle=[]
+vangle=[]
+ttangle=[]
+for name in os.listdir(folder):
+    sep=[i for i in range(0,360,5)]
+    sep1=random.sample(sep, 50)
+    sep2=random.sample(list(set(sep)-set(sep1)),12)
+    sep3=list(set(sep)-set(sep1).union(set(sep2)))
+    get_data(folder,name,sep1,sep2,sep3)
+#we know how many pictures there are and we split them in the ratio 50:12:10
+#for train, validate, test, this works well for CNNs but we'll end up using only the
+#two partitions for the other methods
+
+def read_data(path):
+    data=[]
+    id_cat=[]
+    angle=[]
+    for imagePath in os.listdir(path):
+        # load the image, pre-process it, and store it in the data list
+        image = Image.open(path+'/'+imagePath)
+        image = image.resize((IMAGE_DIMS[1], IMAGE_DIMS[0]))
+        #image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image = np.asarray(image)
+        data.append(image)
+
+        # update the respective lists
+        id_cat.append(imagePath.split('__')[0])
+        angle.append(float(imagepath.split('__')[1].split('.')[0]))
+    return data, id_cat, angle
+
+tangle=pd.DataFrame(tangle)
+tangle.to_csv(folder+'/train_angle.csv')
+vangle=pd.DataFrame(vangle)
+vangle.to_csv(folder+'/valid_angle.csv')
+ttangle=pd.DataFrame(ttangle)
+ttangle.to_csv(folder+'/test_angle.csv')
+
+folder='C:/Users/My PC/Documents/GitHub/coil100/coil-100/coil-100'
+train_dir = f'{folder}/train'
+validation_dir = f'{folder}/valid'
+
+
+train_data, trainy, tangle=read_data(train_dir)
+valid_data, validy, vangle=read_data(validation_dir)
+train_data=np.array(train_data)
+valid_data=np.array(valid_data)
+tangle=np.array(tangle)
+tangle=tangle.astype(np.float)
+vangle=np.array(vangle)
+vangle=vangle.astype(np.float)
+
+train_label=pd.DataFrame(trainy)
+train_label.to_csv(folder+'/train_label.csv')
+valid_label=pd.DataFrame(validy)
+valid_label.to_csv(folder+'/valid_label.csv')
+
+trainX=np.array([mobilenet.predict(np.expand_dims(x,axis=0)).reshape(1*7*7*1024) for x in train_data])
+validX=np.array([mobilenet.predict(np.expand_dims(x,axis=0)).reshape(1*7*7*1024) for x in valid_data])
+#testX=np.array([mobilenet.predict(np.expand_dims(x,axis=0)) for x in test_data])
+
+# trainXX=[train_data[i].reshape(224*224*3) for i in range(len(train_data))]
+# train_data1=pd.DataFrame(trainXX)
+# train_data1.to_csv('C:/Users/My PC/Documents/GitHub/coil100/raw_trainX.csv')
+# validXX=[valid_data[i].reshape(224*224*3) for i in range(len(valid_data))]
+# valid_data1=pd.DataFrame(validXX)
+# valid_data1.to_csv('C:/Users/My PC/Documents/GitHub/coil100/raw_validX.csv')
+
+trainX=pd.DataFrame(trainX)
+trainX.to_csv('C:/Users/My PC/Documents/GitHub/coil100/mobile_trainX.csv)
+validX=pd.DataFrame(validX)
+validX.to_csv('C:/Users/My PC/Documents/GitHub/coil100/mobile_validX.csv)

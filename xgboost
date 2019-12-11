@@ -1,0 +1,109 @@
+from sklearn.decomposition import PCA
+import xgboost as xgb
+from sklearn.pipeline import make_pipeline
+import pandas as pd
+import numpy as np
+import tensorflow as tf
+import time
+import matplotlib.pyplot as plt
+import os
+import shutil
+from PIL import Image
+
+
+def graycells(image):
+    n,m =image.shape[0],image.shape[1]
+    im=np.zeros((n,m))
+    for i in range(n):
+        for j in range(m):
+            im[i][j]=image[i][j].mean()
+    return im
+
+def read_data(path):
+    data=[]
+    id_cat=[]
+    angle=[]
+    for imagePath in os.listdir(path):
+        # load the image, pre-process it, and store it in the data list
+        image = Image.open(path+'/'+imagePath)
+        image = image.resize((IMAGE_DIMS[1], IMAGE_DIMS[0]))
+        #image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image = np.asarray(image)
+        data.append(image)
+
+        # update the respective lists
+        id_cat.append(imagePath.split('__')[0])
+        angle.append(float(imagePath.split('__')[1].split('.')[0]))
+    return data, id_cat, angle
+
+folder='C:/Users/My PC/Documents/GitHub/coil100'
+
+train_dir = f'{folder}/train'
+validation_dir = f'{folder}/valid'
+
+trainY=os.listdir(train_dir)
+validY=os.listdir(validation_dir)
+
+# initialize the number of epochs to train for, initial learning rate,
+# batch size, and image dimensions
+
+IMAGE_DIMS = (96, 96, 3)
+
+#Obtain the data sets for training, validation and testing
+train_data, trainY, tangle=read_data(train_dir)
+valid_data, validY, vangle=read_data(validation_dir)
+train_data=np.array(train_data)
+valid_data=np.array(valid_data)
+tangle=np.array(tangle)
+tangle=tangle.astype(np.float)
+vangle=np.array(vangle)
+vangle=vangle.astype(np.float)
+
+pca = PCA(n_components=650, whiten=False, random_state=42)
+xgbregress=xgb.XGBRegressor(random_state=1, learning_rate=0.1, n_jobs=-1)
+
+params={'pca__n_components':[400,500,600,650], 'xgbregressor__booster': ['gbtree','gblinear','dart'],
+ 'xgbregressor__gamma':[0,1], 'xgbregressor__learning_rate':[0.01,0.05,0.1,0.2,0.3]}
+opt_model=GridSearchCV(estimator=model1,
+                     param_grid=params,
+                     scoring='explained_variance',
+                     cv=6,
+                     n_jobs=-1)
+
+
+#convert picture to graycells because this model uses a 2x2 matrix, so we still need to reshape our images to vectors
+train=np.array([graycells(x) for x in train_data])
+train1=np.array([train[i].reshape(train[0].shape[0]*train[0].shape[1]) for i in range(len(train))])
+
+valid=np.array([graycells(x) for x in valid_data])
+valid1=np.array([valid[i].reshape(valid[0].shape[0]*valid[0].shape[1]) for i in range(len(valid))])
+
+model1=make_pipeline(pca,xgbregress)
+
+training=np.concatenate((train1,valid1))
+Y=np.concatenate((tangle,vangle))
+opt_model.fit(training,Y/355)
+
+
+pca = PCA(n_components=250, whiten=True, random_state=42)
+xgbtree=xgb.XGBClassifier(random_state=1, learning_rate=0.01, n_jobs=-1)
+cmodel=make_pipeline(pca,xgbtree)
+
+params={'pca__n_components':[200,250,300,350], 'xgbclassifier__booster': ['gbtree','dart'], 'xgbclassifier__gamma':[0,1], 'xgbclassifier__learning_rate':[0.01,0.05,0.1,0.2,0.3]}
+opt_cmodel=GridSearchCV(estimator=cmodel,
+                     param_grid=params,
+                     scoring='accuracy',
+                     cv=6,
+                     n_jobs=-1)
+
+#training=np.concatenate((train1,valid1))
+trainingy=np.concatenate((trainy,validy))
+opt_cmodel.fit(training,trainingy)
+
+
+regresser=open(folder+'/models/xgb_regression.py', 'wb')
+pickle.dump(opt_model,regresser)
+regresser.close()
+classifier=open(folder+'/models/xgb_classification.py', 'wb')
+pickle.dump(opt_cmodel,classifier)
+classifier.close()

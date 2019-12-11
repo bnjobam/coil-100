@@ -1,0 +1,100 @@
+import pandas as pd
+import numpy as np
+import tensorflow as tf
+import time
+import matplotlib.pyplot as plt
+import os
+import shutil
+from PIL import Image
+from keras.models import load_model
+import pickle
+from keras.applications import MobileNet
+
+folder='C:/Users/My PC/Documents/GitHub/coil100/'
+
+def test_accuracy(model,testdata,testY, ttangle):
+    if type(model)==dict:
+        testdata=np.array([x.reshape(np.prod(testdata[0].shape)) for x in testdata])
+        object_id=model['classification'].predict(testdata)
+        angles=model['regression'].predict(testdata)
+    else:
+        preds=model.predict(testdata, batch_size=32)
+        object_id=np.array([trainYLB.classes_[x.argmax()] for x in preds[0]])
+        angles=np.array([x*355 for x in preds[1].flatten()])
+    acc=sum([object_id[i]==testY[i] for i in range(len(testY))])/len(testY)
+    mse=sum([((angles[i]-ttangle[i])**2)/len(testY) for i in range(len(testY))])
+    return acc, mse
+
+def read_data(path):
+    data=[]
+    id_cat=[]
+    angle=[]
+    for imagePath in os.listdir(path):
+        # load the image, pre-process it, and store it in the data list
+        image = Image.open(path+'/'+imagePath)
+        image = image.resize((IMAGE_DIMS[1], IMAGE_DIMS[0]))
+        #image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image = np.asarray(image)
+        data.append(image)
+
+        # update the respective lists
+        id_cat.append(imagePath.split('__')[0])
+        angle.append(float(imagePath.split('__')[1].split('.')[0]))
+    return data, id_cat, angle
+
+def graycells(image):
+    n,m =image.shape[0],image.shape[1]
+    im=np.zeros((n,m))
+    for i in range(n):
+        for j in range(m):
+            im[i][j]=image[i][j].mean()
+    return im
+
+mobilenet = MobileNet(weights='imagenet',
+                  include_top=False,
+                  input_shape=(224, 224, 3))
+
+raw_CNN_model=load_model(folder+'models/raw_image_CNN_model.py', custom_objects={'tf':tf})
+tranfer_learn_model=load_model(folder+'models/transfer_learn_mobilenet_model.py', custom_objects={'tf':tf})
+classifier=open(folder+'models/xgb_classification_transfer_learn.py', 'rb')
+txgb_classifier=pickle.load(classifier)
+classifier.close()
+regressor=open(folder+'models/xgb_regression_transfer_learn.py', 'rb')
+txgb_regressor=pickle.load(regressor)
+classifier.close()
+
+classifier=open(folder+'models/xgb_classification.py', 'rb')
+xgb_classifier=pickle.load(classifier)
+classifier.close()
+regressor=open(folder+'models/xgb_regression.py', 'rb')
+xgb_regressor=pickle.load(regressor)
+classifier.close()
+
+results=pd.DataFrame(['Transfer learn CNN','CNN','Transfer learn XGB', 'XGB'])
+results.loc[:,'acc']=[0,0,0,0]
+results.loc[:,'mse']=[0,0,0,0]
+test_data, testY, ttangle = read_data(folder+'test',[224,224])
+test_data=np.array(test_data)
+testX=mobilenet.predict(test_data, batch_size=25)
+testX=[x.reshape((28,28,64)) for x in testX]
+testX1=np.array([x.reshape((28*28*64)) for x in testX])
+testdata=read_data(folder+'test',[96,96])[0]
+testdata1=np.array([graycells(x) for x in testdata])
+testdata1=np.array([x.reshape(np.prod(x.shape)) for x in test_data1])
+
+
+
+results.loc[0,'acc'],results.loc[0,'mse']=test_accuracy(tranfer_learn_model,testX,testY,ttangle)
+results.loc[1,'acc'],results.loc[1,'mse']=test_accuracy(raw_CNN_model,testdata,testY,ttangle)
+results.loc[2,'acc'],results.loc[2,'mse']=test_accuracy({'classification':txgb_classifier, 'regression':txgb_regressor},testX1,testY,ttangle)
+results.loc[3,'acc'],results.loc[3,'mse']=test_accuracy({'classification':xgb_classifier, 'regression':xgb_regressor},testdata1,testY,ttangle)
+
+(fig, ax) = plt.subplots(1,2, figsize=(12,8))
+for i in range(2):
+    ax[i].set_title(f'{results.columns[i+1]} bar chart')
+    ax[i].set_xlabel('models')
+    ax[i].set_ylabel(f'{results.columns[i+1]} level')
+    ax[i].bar(results.loc[:,0], results.loc[:,f'{results.columns[i+1]}'])
+plt.show()
+plt.savefig(f"{folder}plots and displays/models_performance_barchart.png")
+plt.close()
